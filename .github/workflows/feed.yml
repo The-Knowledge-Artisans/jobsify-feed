@@ -17,7 +17,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Generate jobs.xml
-        run: python3 jobsify_feed.py --out jobs.xml
+        run: python3 jobsify_feed.py --out jobs.xml --talent-out talent.xml
       - name: Sanity check
         run: |
           python3 - <<'PY'
@@ -31,6 +31,6 @@ jobs:
         run: |
           git config user.name "jobsify-feed-bot"
           git config user.email "actions@users.noreply.github.com"
-          git add jobs.xml
+          git add jobs.xml talent.xml
           git diff --cached --quiet || git commit -m "Update jobs.xml"
           git push

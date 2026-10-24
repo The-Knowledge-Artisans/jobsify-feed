@@ -145,9 +145,56 @@ def build_feed(postings, now=None):
     return "\n".join(out) + "\n"
 
 
+def loc_parts(jp):
+    loc = jp.get("jobLocation")
+    if isinstance(loc, list) and loc:
+        loc = loc[0]
+    addr = (loc or {}).get("address", {}) if isinstance(loc, dict) else {}
+    city = (addr.get("addressLocality") or "").strip()
+    city = re.sub(r",?\s*India\s*$", "", city, flags=re.I).strip() or "India"
+    state = (addr.get("addressRegion") or "").strip()
+    return city, state, "India"
+
+
+def build_talent_feed(postings, now=None):
+    """Talent.com layout: <source> root, referencenumber, city/state/country, dateposted, url."""
+    now = now or datetime.now(timezone.utc)
+    out = ['<?xml version="1.0" encoding="utf-8"?>', "<source>",
+           "  <publisher>JobsifyAI</publisher>", f"  <publisherurl>{SITE}</publisherurl>",
+           f"  <lastbuilddate>{now.strftime('%Y-%m-%dT%H:%M:%SZ')}</lastbuilddate>"]
+    for url, jp in postings:
+        exp = parse_dt(jp.get("validThrough"))
+        if exp and exp < now:
+            continue
+        jid = (jp.get("identifier") or {}).get("value") or url.rstrip("/").split("--")[-1]
+        pub = parse_dt(jp.get("datePosted")) or now
+        org = (jp.get("hiringOrganization") or {}).get("name", "")
+        base = jp.get("url") or url
+        link = base + ("&" if "?" in base else "?") + "source=talent&utm_source=talent&utm_medium=xml_feed"
+        city, state, country = loc_parts(jp)
+        out += ["  <job>",
+                f"    <referencenumber>{cdata(jid)}</referencenumber>",
+                f"    <title>{cdata(jp.get('title', '').strip())}</title>",
+                f"    <company>{cdata(org.strip())}</company>",
+                f"    <city>{cdata(city)}</city>",
+                f"    <state>{cdata(state)}</state>",
+                f"    <country>{cdata(country)}</country>",
+                f"    <dateposted>{cdata(pub.strftime('%Y-%m-%dT%H:%M:%SZ'))}</dateposted>",
+                f"    <url>{cdata(link)}</url>",
+                f"    <description>{cdata(desc_to_html(jp.get('description')))}</description>"]
+        if exp:
+            out.append(f"    <expirationdate>{cdata(exp.strftime('%m-%d-%YT%H:%M:%SZ'))}</expirationdate>")
+        if jp.get("employmentType"):
+            out.append(f"    <jobtype>{cdata(str(jp['employmentType']).replace('_', ' ').capitalize())}</jobtype>")
+        out.append("  </job>")
+    out.append("</source>")
+    return "\n".join(out) + "\n"
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="jobs.xml")
+    ap.add_argument("--talent-out", default="", help="also write Talent.com-format feed here")
     ap.add_argument("--limit", type=int, default=0)
     ap.add_argument("--delay", type=float, default=0.3, help="seconds between page fetches")
     a = ap.parse_args()
@@ -168,6 +215,9 @@ def main():
         time.sleep(a.delay)
     with open(a.out, "w", encoding="utf-8") as f:
         f.write(build_feed(postings))
+    if a.talent_out:
+        with open(a.talent_out, "w", encoding="utf-8") as f:
+            f.write(build_talent_feed(postings))
 
 
 if __name__ == "__main__":
