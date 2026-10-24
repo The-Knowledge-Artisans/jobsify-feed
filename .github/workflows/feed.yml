@@ -1,0 +1,36 @@
+name: Build JobsifyAI job feed
+
+on:
+  schedule:
+    - cron: "30 0 * * *"   # 06:00 IST daily
+  workflow_dispatch: {}
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Generate jobs.xml
+        run: python3 jobsify_feed.py --out jobs.xml
+      - name: Sanity check
+        run: |
+          python3 - <<'PY'
+          import xml.dom.minidom as m
+          d = m.parse("jobs.xml")
+          n = len(d.getElementsByTagName("job"))
+          print("jobs in feed:", n)
+          assert n > 0, "feed is empty - refusing to publish"
+          PY
+      - name: Commit feed
+        run: |
+          git config user.name "jobsify-feed-bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add jobs.xml
+          git diff --cached --quiet || git commit -m "Update jobs.xml"
+          git push
